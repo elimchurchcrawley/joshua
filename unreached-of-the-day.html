@@ -553,6 +553,7 @@
 
 <script>
 (function(){
+  console.log('[UOTD] script started. location.search =', window.location.search);
   const els = {
     loading: document.getElementById('loading'),
     error: document.getElementById('error'),
@@ -640,7 +641,19 @@
 
   async function fetchUnreached(apiKey){
     const url = 'https://api.joshuaproject.net/v1/people_groups/daily_unreached.json?api_key=' + encodeURIComponent(apiKey);
-    const resp = await fetch(url);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 12000);
+    let resp;
+    try{
+      resp = await fetch(url, { signal: controller.signal });
+    }catch(err){
+      if(err && err.name === 'AbortError'){
+        throw new Error('No response after 12 seconds — this device may not have internet access, or a firewall is blocking the request');
+      }
+      throw new Error('Network request failed (' + (err && err.message ? err.message : 'unknown') + ')');
+    }finally{
+      clearTimeout(timeoutId);
+    }
     if(!resp.ok){
       throw new Error('HTTP ' + resp.status);
     }
@@ -656,4 +669,230 @@
     return Number(n).toLocaleString('en-US');
   }
   function fmtPercent(n){
-    if(n === null || n === undefined || 
+    if(n === null || n === undefined || n === '') return '0.00%';
+    return Number(n).toFixed(2) + '%';
+  }
+
+  function drawGraticule(lat, lon){
+    const svg = document.getElementById('map-svg');
+    const W = 220, H = 160;
+    svg.innerHTML = '';
+    const ns = 'http://www.w3.org/2000/svg';
+
+    // meridians every 30deg, parallels every 30deg
+    for(let lo=-180; lo<=180; lo+=30){
+      const x = ((lo+180)/360)*W;
+      const line = document.createElementNS(ns,'line');
+      line.setAttribute('x1',x); line.setAttribute('x2',x);
+      line.setAttribute('y1',0); line.setAttribute('y2',H);
+      line.setAttribute('stroke','rgba(201,161,93,0.18)');
+      line.setAttribute('stroke-width','0.6');
+      svg.appendChild(line);
+    }
+    for(let la=-90; la<=90; la+=30){
+      const y = ((90-la)/180)*H;
+      const line = document.createElementNS(ns,'line');
+      line.setAttribute('x1',0); line.setAttribute('x2',W);
+      line.setAttribute('y1',y); line.setAttribute('y2',y);
+      line.setAttribute('stroke','rgba(201,161,93,0.18)');
+      line.setAttribute('stroke-width','0.6');
+      svg.appendChild(line);
+    }
+
+    if(typeof lat === 'number' && typeof lon === 'number' && !isNaN(lat) && !isNaN(lon)){
+      const x = ((lon+180)/360)*W;
+      const y = ((90-lat)/180)*H;
+
+      const glow = document.createElementNS(ns,'circle');
+      glow.setAttribute('cx',x); glow.setAttribute('cy',y); glow.setAttribute('r',9);
+      glow.setAttribute('fill','rgba(228,192,126,0.25)');
+      svg.appendChild(glow);
+
+      const dot = document.createElementNS(ns,'circle');
+      dot.setAttribute('cx',x); dot.setAttribute('cy',y); dot.setAttribute('r',3.2);
+      dot.setAttribute('fill','#E4C07E');
+      dot.setAttribute('stroke','#0E1524');
+      dot.setAttribute('stroke-width','0.8');
+      svg.appendChild(dot);
+    }
+  }
+
+  function render(u){
+    const dateLabel = new Date().toLocaleDateString('en-US', { month:'long', day:'numeric', year:'numeric' });
+    document.getElementById('date-label').textContent = '· ' + dateLabel;
+    document.getElementById('scale-badge-text').textContent = u.JPScaleText || 'Unreached';
+
+    const scaleIcon = document.getElementById('scale-icon');
+    if(u.JPScaleImageURL){
+      scaleIcon.onerror = () => scaleIcon.classList.remove('loaded');
+      scaleIcon.onload = () => scaleIcon.classList.add('loaded');
+      scaleIcon.src = u.JPScaleImageURL;
+    }else{
+      scaleIcon.removeAttribute('src');
+      scaleIcon.classList.remove('loaded');
+    }
+
+    document.getElementById('people-name').textContent = u.PeopNameInCountry || u.PeopNameAcrossCountries || 'Unknown people group';
+    document.getElementById('country-line').textContent = 'of ' + (u.Ctry || '—');
+
+    document.getElementById('stat-population').textContent = fmtNumber(u.Population);
+    document.getElementById('stat-language').textContent = u.PrimaryLanguageName || '—';
+    document.getElementById('stat-religion').textContent = u.PrimaryReligion || '—';
+    document.getElementById('stat-christian').textContent = fmtPercent(u.PercentAdherents);
+
+    document.getElementById('prayer-text').textContent =
+      'Please pray for the ' + (u.PeopNameInCountry || 'people') + ' of ' + (u.Ctry || '—') + '.';
+
+    // Photo plate
+    const photoPlate = document.getElementById('photo-plate');
+    const photoImg = document.getElementById('photo-img');
+    const photoCredit = document.getElementById('photo-credit');
+    if(u.PeopleGroupPhotoURL){
+      photoImg.src = u.PeopleGroupPhotoURL;
+      photoPlate.classList.remove('empty');
+      photoCredit.textContent = u.PhotoCredits ? ('Photo: ' + u.PhotoCredits) : '';
+    }else{
+      photoPlate.classList.add('empty');
+      photoCredit.textContent = '';
+    }
+
+    // Map plate — prefer Joshua Project's real location map, fall back to a locator graticule
+    const mapImg = document.getElementById('map-img');
+    const mapSvg = document.getElementById('map-svg');
+    const mapCoordsEl = document.getElementById('map-coords');
+    const lat = parseFloat(u.Latitude);
+    const lon = parseFloat(u.Longitude);
+    const coordsText = (isNaN(lat)||isNaN(lon)) ? '' :
+      (Math.abs(lat).toFixed(1) + '°' + (lat>=0?'N':'S') + ', ' + Math.abs(lon).toFixed(1) + '°' + (lon>=0?'E':'W'));
+
+    if(u.PeopleGroupMapURL){
+      mapImg.onerror = () => {
+        mapImg.style.display = 'none';
+        mapSvg.style.display = 'block';
+        drawGraticule(lat, lon);
+      };
+      mapImg.onload = () => {
+        mapImg.style.display = 'block';
+        mapSvg.style.display = 'none';
+      };
+      mapImg.src = u.PeopleGroupMapURL;
+
+      const creditTitle = u.MapCredits ? u.MapCredits.replace(/"/g,'&quot;') : '';
+      mapCoordsEl.innerHTML =
+        (coordsText ? `<span class="coords-main">${coordsText}</span>` : '') +
+        `<span class="coords-credit"${creditTitle ? ` title="${creditTitle}"` : ''}>Map: Joshua Project</span>`;
+    }else{
+      mapImg.style.display = 'none';
+      mapSvg.style.display = 'block';
+      drawGraticule(lat, lon);
+      mapCoordsEl.innerHTML = coordsText ? `<span class="coords-main">${coordsText}</span>` : '';
+    }
+
+    showContent();
+  }
+
+  let currentDateKey = null;
+
+  async function load(){
+    console.log('[UOTD] load() called');
+    showLoading();
+    currentDateKey = todayStr();
+    try{
+      const urlKey = new URLSearchParams(window.location.search).get('key');
+      console.log('[UOTD] urlKey =', urlKey);
+      let apiKey = urlKey || await getStoredKey();
+      console.log('[UOTD] apiKey resolved =', apiKey ? '(present, length ' + apiKey.length + ')' : '(none)');
+
+      if(urlKey){
+        await setStoredKey(urlKey);
+        console.log('[UOTD] stored urlKey for future loads');
+      }
+
+      if(!apiKey){
+        console.log('[UOTD] no apiKey — showing key-entry screen');
+        showError(
+          "A free Joshua Project API key is needed to display this.",
+          'Request one at <a href="https://api.joshuaproject.net/" target="_blank" rel="noopener">api.joshuaproject.net</a> — it arrives by email in a few minutes. Paste it below once you have it; this page will remember it.<br><br>Using ProPresenter or another tool where you can\'t type into this page? Add <code>?key=YOURKEY</code> to the end of this file\'s address in that program\'s own URL field instead — no typing inside the embedded view needed.',
+          true
+        );
+        return;
+      }
+
+      const dateKey = todayStr();
+      let data = await getCached(dateKey);
+      console.log('[UOTD] cached data for', dateKey, '=', data ? '(found)' : '(none)');
+
+      if(!data){
+        try{
+          console.log('[UOTD] calling fetchUnreached...');
+          data = await fetchUnreached(apiKey);
+          console.log('[UOTD] fetchUnreached succeeded:', data && data.PeopNameInCountry);
+          await setCached(dateKey, data);
+        }catch(err){
+          console.log('[UOTD] fetchUnreached FAILED:', err);
+          showError(
+            "Couldn't load today's people group.",
+            'The API key may be invalid, or the request failed (' + err.message + '). You can update your key with the gear icon in the top right, or try reloading the page.',
+            true
+          );
+          return;
+        }
+      }
+      render(data);
+    }catch(fatalErr){
+      showError(
+        "Something unexpected went wrong.",
+        'Error detail: ' + (fatalErr && fatalErr.message ? fatalErr.message : String(fatalErr)),
+        true
+      );
+    }
+  }
+
+  // key entry form (error screen)
+  els.keyForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const val = els.keyInput.value.trim();
+    if(!val){ els.formMsg.textContent = 'Please enter a key.'; return; }
+    els.formMsg.textContent = 'Saving…';
+    const result = await setStoredKey(val);
+    if(!result.ok){
+      els.formMsg.textContent = 'Could not save the key (' + result.message + '). Try again.';
+      return;
+    }
+    els.formMsg.textContent = 'Saved — loading…';
+    await load();
+  });
+
+  // gear / settings modal
+  els.gear.addEventListener('click', async () => {
+    els.modal.classList.remove('hidden');
+    els.modalInput.value = (await getStoredKey()) || '';
+    els.modalMsg.textContent = '';
+  });
+  els.modalClose.addEventListener('click', () => { els.modal.classList.add('hidden'); });
+  els.modalSave.addEventListener('click', async () => {
+    const val = els.modalInput.value.trim();
+    if(!val){ els.modalMsg.textContent = 'Please enter a key.'; return; }
+    els.modalMsg.textContent = 'Saving…';
+    const result = await setStoredKey(val);
+    if(!result.ok){
+      els.modalMsg.textContent = 'Could not save the key (' + result.message + '). Try again.';
+      return;
+    }
+    els.modalMsg.textContent = 'Saved — loading…';
+    els.modal.classList.add('hidden');
+    await load();
+  });
+
+  load();
+
+  setInterval(() => {
+    if(todayStr() !== currentDateKey){
+      load();
+    }
+  }, 5 * 60 * 1000);
+})();
+</script>
+
+</body>
+</html>
