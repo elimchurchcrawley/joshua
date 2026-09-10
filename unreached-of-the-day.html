@@ -1,0 +1,862 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Unreached of the Day</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,450;0,9..144,600;1,9..144,450&family=Space+Grotesk:wght@400;500;600&family=Work+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:        #0E1524;
+    --dusk:       #1C2C4C;
+    --dusk-2:     #24365C;
+    --parchment:  #F1E8D6;
+    --parchment-dim: #C9BFA9;
+    --gold:       #C9A15D;
+    --gold-bright:#E4C07E;
+    --sage:       #8FA98C;
+    --scrim:      rgba(8,11,20,0.62);
+    --scrim-strong: rgba(8,11,20,0.86);
+  }
+
+  *{ box-sizing:border-box; }
+
+  html,body{
+    margin:0; padding:0; width:100%; height:100%;
+    background:var(--ink);
+    color:var(--parchment);
+    font-family:'Work Sans', sans-serif;
+    overflow:hidden;
+  }
+
+  #stage{
+    position:relative;
+    width:100vw; height:100vh;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:
+      radial-gradient(ellipse at 20% 15%, rgba(201,161,93,0.10), transparent 45%),
+      linear-gradient(160deg, var(--dusk) 0%, var(--ink) 65%);
+  }
+
+  /* ---------- loading / error state ---------- */
+  .status-screen{
+    position:absolute; inset:0;
+    display:flex; flex-direction:column;
+    align-items:center; justify-content:center;
+    gap:18px;
+    text-align:center;
+    padding:6vh 8vw;
+  }
+  .status-screen.hidden{ display:none; }
+  .status-eyebrow{
+    font-family:'Space Grotesk', sans-serif;
+    letter-spacing:0.28em;
+    text-transform:uppercase;
+    font-size:clamp(11px,1.1vw,14px);
+    color:var(--gold);
+  }
+  .status-title{
+    font-family:'Fraunces', serif;
+    font-weight:450;
+    font-size:clamp(22px,3vw,34px);
+    max-width:680px;
+    line-height:1.35;
+    color:var(--parchment);
+  }
+  .status-detail{
+    font-size:clamp(13px,1.1vw,16px);
+    color:var(--parchment-dim);
+    max-width:520px;
+    line-height:1.6;
+  }
+  .status-detail a{ color:var(--gold-bright); }
+  .spinner{
+    width:34px; height:34px;
+    border-radius:50%;
+    border:2px solid rgba(241,232,214,0.18);
+    border-top-color:var(--gold);
+    animation:spin 0.9s linear infinite;
+  }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+
+  /* ---------- key entry ---------- */
+  .key-form{
+    display:flex; gap:10px; margin-top:6px; flex-wrap:wrap; justify-content:center;
+  }
+  .key-form input{
+    background:rgba(241,232,214,0.06);
+    border:1px solid rgba(201,161,93,0.4);
+    color:var(--parchment);
+    font-family:'Space Grotesk', monospace;
+    font-size:15px;
+    padding:11px 14px;
+    border-radius:6px;
+    width:260px;
+    letter-spacing:0.04em;
+  }
+  .key-form input::placeholder{ color:var(--parchment-dim); }
+  .key-form input:focus{ outline:2px solid var(--gold-bright); outline-offset:1px; }
+  .btn{
+    font-family:'Space Grotesk', sans-serif;
+    font-size:14px;
+    letter-spacing:0.03em;
+    background:var(--gold);
+    color:var(--ink);
+    border:none;
+    padding:11px 20px;
+    border-radius:6px;
+    cursor:pointer;
+    font-weight:500;
+    transition:background 0.15s ease, transform 0.15s ease;
+  }
+  .btn:hover{ background:var(--gold-bright); transform:translateY(-1px); }
+  .btn:focus-visible{ outline:2px solid var(--parchment); outline-offset:2px; }
+  .btn-ghost{
+    background:transparent;
+    border:1px solid rgba(241,232,214,0.35);
+    color:var(--parchment);
+  }
+  .btn-ghost:hover{ background:rgba(241,232,214,0.08); }
+  .form-msg{ font-size:13px; color:#E2A05A; min-height:16px; }
+
+  /* ---------- main content ---------- */
+  #content{
+    position:absolute; inset:0;
+    opacity:0;
+    pointer-events:none;
+    transition:opacity 1.1s ease;
+  }
+  #content.visible{ opacity:1; pointer-events:auto; }
+
+  .bg-texture{
+    position:absolute; inset:0;
+    background-image: radial-gradient(rgba(201,161,93,0.14) 1px, transparent 1px);
+    background-size: 26px 26px;
+    opacity:0.35;
+    pointer-events:none;
+  }
+  .bg-vignette{
+    position:absolute; inset:0;
+    background:
+      radial-gradient(ellipse at 78% 20%, rgba(201,161,93,0.08), transparent 40%),
+      linear-gradient(0deg, rgba(8,11,20,0.55) 0%, transparent 22%, transparent 78%, rgba(8,11,20,0.4) 100%);
+    pointer-events:none;
+  }
+
+  .layer{
+    position:relative;
+    width:100%; height:100%;
+    display:flex;
+    flex-direction:column;
+    padding:5.4vh 5.6vw;
+  }
+
+  .center-block{
+    flex:1;
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+    gap:clamp(30px,5.5vh,64px);
+    min-height:0;
+  }
+
+  .top-row{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+  }
+  .eyebrow{
+    font-family:'Space Grotesk', sans-serif;
+    text-transform:uppercase;
+    letter-spacing:0.32em;
+    font-size:clamp(11px,1.05vw,15px);
+    color:var(--gold-bright);
+  }
+  .eyebrow .date{
+    color:var(--parchment-dim);
+    letter-spacing:0.18em;
+    margin-left:14px;
+    font-weight:300;
+  }
+
+  .scale-badge{
+    font-family:'Space Grotesk', sans-serif;
+    font-size:clamp(10px,0.95vw,13px);
+    letter-spacing:0.14em;
+    text-transform:uppercase;
+    color:var(--ink);
+    background:var(--sage);
+    padding:6px 14px 6px 10px;
+    border-radius:999px;
+    white-space:nowrap;
+    display:flex;
+    align-items:center;
+    gap:7px;
+  }
+  .scale-badge img{
+    width:14px; height:14px;
+    border-radius:50%;
+    display:none;
+    object-fit:cover;
+  }
+  .scale-badge img.loaded{ display:block; }
+
+  .main-row{
+    display:flex;
+    align-items:center;
+    gap:clamp(24px,4vw,56px);
+  }
+
+  .name-block{ max-width:56vw; }
+  .people-name{
+    font-family:'Fraunces', serif;
+    font-weight:450;
+    font-size:clamp(40px,6.8vw,104px);
+    line-height:1.02;
+    letter-spacing:-0.01em;
+    color:var(--parchment);
+    text-shadow:0 2px 26px rgba(0,0,0,0.35);
+  }
+  .country-line{
+    font-family:'Fraunces', serif;
+    font-style:italic;
+    font-weight:400;
+    font-size:clamp(18px,2.1vw,30px);
+    color:var(--gold-bright);
+    margin-top:0.4em;
+  }
+
+  .stats-row{
+    display:flex;
+    gap:clamp(20px,4vw,64px);
+    margin-top:clamp(20px,3.4vh,40px);
+    flex-wrap:wrap;
+  }
+  .stat{
+    display:flex; flex-direction:column; gap:4px;
+  }
+  .stat-label{
+    font-family:'Space Grotesk', sans-serif;
+    font-size:clamp(10px,0.85vw,12px);
+    letter-spacing:0.16em;
+    text-transform:uppercase;
+    color:var(--parchment-dim);
+  }
+  .stat-value{
+    font-family:'Space Grotesk', sans-serif;
+    font-size:clamp(17px,1.7vw,26px);
+    font-weight:500;
+    color:var(--parchment);
+  }
+
+  .bottom-row{
+    display:flex;
+    align-items:flex-end;
+  }
+  .prayer-line{
+    font-family:'Fraunces', serif;
+    font-style:italic;
+    font-weight:400;
+    font-size:clamp(16px,1.9vw,26px);
+    color:var(--parchment);
+    max-width:64vw;
+    line-height:1.5;
+    border-left:2px solid var(--gold);
+    padding-left:1.1em;
+  }
+  .prayer-line .credit{
+    display:block;
+    margin-top:0.6em;
+    font-family:'Work Sans', sans-serif;
+    font-style:normal;
+    font-size:0.5em;
+    letter-spacing:0.1em;
+    text-transform:uppercase;
+    color:var(--parchment-dim);
+  }
+
+  /* ---------- framed visuals (photo + map plates) ---------- */
+  .name-block{ flex:1 1 auto; min-width:0; }
+
+  .visual-col{
+    flex:0 0 auto;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+  }
+
+  .plate{
+    position:relative;
+    border:1px solid rgba(201,161,93,0.5);
+    background:rgba(241,232,214,0.045);
+    overflow:hidden;
+    box-shadow:0 10px 30px rgba(0,0,0,0.35);
+  }
+  .plate::before, .plate::after, .plate .corner{
+    content:''; position:absolute; width:12px; height:12px; pointer-events:none;
+  }
+  .plate::before{ top:6px; left:6px; border-top:1.5px solid var(--gold); border-left:1.5px solid var(--gold); }
+  .plate::after{ bottom:6px; right:6px; border-bottom:1.5px solid var(--gold); border-right:1.5px solid var(--gold); }
+  .plate .corner-tr{ top:6px; right:6px; border-top:1.5px solid var(--gold); border-right:1.5px solid var(--gold); }
+  .plate .corner-bl{ bottom:6px; left:6px; border-bottom:1.5px solid var(--gold); border-left:1.5px solid var(--gold); }
+
+  .photo-plate{
+    width:clamp(170px,17vw,250px);
+    aspect-ratio:3/4;
+  }
+  .photo-plate img{
+    width:100%; height:100%;
+    object-fit:cover;
+    display:block;
+    filter:saturate(0.94) brightness(1);
+  }
+  .photo-plate.empty{ display:none; }
+
+  .map-plate{
+    width:clamp(260px,27vw,420px);
+    aspect-ratio:4/3;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+  .map-plate img{
+    width:100%; height:100%;
+    object-fit:contain;
+    padding:14px;
+    display:block;
+  }
+  .map-plate svg{ width:100%; height:100%; display:block; }
+  .map-plate.empty{ display:none; }
+
+  .plate-caption{
+    margin-top:9px;
+    font-family:'Space Grotesk', sans-serif;
+    font-size:10.5px;
+    letter-spacing:0.1em;
+    text-transform:uppercase;
+    color:var(--parchment-dim);
+    text-align:center;
+    max-width:260px;
+    line-height:1.5;
+  }
+  .plate-caption .coords-main{
+    display:block;
+    font-size:12.5px;
+    letter-spacing:0.12em;
+    text-transform:none;
+    color:var(--parchment-dim);
+  }
+  .plate-caption .coords-credit{
+    display:block;
+    margin-top:3px;
+    font-size:9.5px;
+    letter-spacing:0.08em;
+    color:var(--parchment-dim);
+    opacity:0.55;
+    cursor:default;
+  }
+
+  /* ---------- settings gear ---------- */
+  #gear-zone{
+    position:absolute;
+    top:0; right:0;
+    width:92px; height:92px;
+    z-index:31;
+  }
+  #gear{
+    position:absolute;
+    top:22px; right:26px;
+    width:34px; height:34px;
+    border-radius:50%;
+    border:1px solid rgba(241,232,214,0.25);
+    background:rgba(8,11,20,0.35);
+    color:var(--parchment-dim);
+    display:flex; align-items:center; justify-content:center;
+    cursor:pointer;
+    opacity:0;
+    transition:opacity 0.25s ease, color 0.2s ease, border-color 0.2s ease;
+    z-index:30;
+  }
+  #gear-zone:hover #gear, #gear:focus-visible{ opacity:0.5; }
+  #gear:hover{ opacity:1 !important; color:var(--gold-bright); border-color:var(--gold-bright); }
+  #gear svg{ width:17px; height:17px; }
+
+  #settings-modal{
+    position:absolute; inset:0;
+    background:rgba(8,11,20,0.82);
+    display:flex; align-items:center; justify-content:center;
+    z-index:40;
+    backdrop-filter:blur(3px);
+  }
+  #settings-modal.hidden{ display:none; }
+  .modal-card{
+    background:var(--dusk-2);
+    border:1px solid rgba(201,161,93,0.3);
+    border-radius:12px;
+    padding:34px 38px;
+    width:min(480px, 88vw);
+    display:flex; flex-direction:column; gap:14px;
+  }
+  .modal-title{
+    font-family:'Fraunces', serif;
+    font-size:22px;
+    color:var(--parchment);
+  }
+  .modal-body{ font-size:13.5px; color:var(--parchment-dim); line-height:1.6; }
+  .modal-body a{ color:var(--gold-bright); }
+  .modal-actions{ display:flex; justify-content:flex-end; gap:10px; margin-top:6px; }
+
+  @media (prefers-reduced-motion: reduce){
+    #content{ transition:none; }
+    .spinner{ animation:none; border-top-color:rgba(241,232,214,0.18); }
+  }
+
+  @media (max-width: 900px){
+    .main-row{ flex-direction:column; align-items:flex-start; gap:3vh; }
+    .visual-col{ flex-direction:row; gap:16px; align-items:flex-start; }
+    .photo-plate{ width:110px; }
+    .map-plate{ width:150px; }
+    .prayer-line{ max-width:90vw; }
+  }
+</style>
+</head>
+<body>
+
+<div id="stage">
+
+  <div id="gear-zone">
+    <button id="gear" title="Settings" aria-label="Open settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+        <circle cx="12" cy="12" r="3.2"></circle>
+        <path d="M19.4 13a7.6 7.6 0 0 0 0-2l2-1.5-2-3.4-2.4 1a7.6 7.6 0 0 0-1.7-1L15 3h-4l-.3 2.1a7.6 7.6 0 0 0-1.7 1l-2.4-1-2 3.4L6.6 11a7.6 7.6 0 0 0 0 2l-2 1.5 2 3.4 2.4-1a7.6 7.6 0 0 0 1.7 1L11 21h4l.3-2.1a7.6 7.6 0 0 0 1.7-1l2.4 1 2-3.4-2-1.5Z"></path>
+      </svg>
+    </button>
+  </div>
+
+  <!-- Loading state -->
+  <div id="loading" class="status-screen">
+    <div class="spinner"></div>
+    <div class="status-eyebrow">Unreached of the Day</div>
+    <div class="status-title">Gathering today's people group&hellip;</div>
+  </div>
+
+  <!-- Error / needs key state -->
+  <div id="error" class="status-screen hidden">
+    <div class="status-eyebrow">Unreached of the Day</div>
+    <div class="status-title" id="error-title">A free Joshua Project API key is needed to display this.</div>
+    <div class="status-detail" id="error-detail">
+      Request one at <a href="https://api.joshuaproject.net/" target="_blank" rel="noopener">api.joshuaproject.net</a> &mdash;
+      it arrives by email in a few minutes. Paste it below once you have it; this page will remember it.
+    </div>
+    <form class="key-form" id="key-form">
+      <input type="text" id="key-input" placeholder="Your API key" autocomplete="off" spellcheck="false">
+      <button type="submit" class="btn">Save &amp; Load</button>
+    </form>
+    <div class="form-msg" id="form-msg"></div>
+  </div>
+
+  <!-- Main content -->
+  <div id="content">
+    <div class="bg-texture"></div>
+    <div class="bg-vignette"></div>
+    <div class="layer">
+
+      <div class="top-row">
+        <div class="eyebrow">Unreached of the Day <span class="date" id="date-label"></span></div>
+        <div class="scale-badge">
+          <img id="scale-icon" alt="">
+          <span id="scale-badge-text"></span>
+        </div>
+      </div>
+
+      <div class="center-block">
+        <div class="main-row">
+        <div class="visual-col">
+          <div class="plate photo-plate" id="photo-plate">
+            <img id="photo-img" alt="">
+            <span class="corner corner-tr"></span>
+            <span class="corner corner-bl"></span>
+          </div>
+          <div class="plate-caption" id="photo-credit"></div>
+        </div>
+
+        <div class="name-block">
+          <div class="people-name" id="people-name"></div>
+          <div class="country-line" id="country-line"></div>
+
+          <div class="stats-row">
+            <div class="stat">
+              <div class="stat-label">Population</div>
+              <div class="stat-value" id="stat-population"></div>
+            </div>
+            <div class="stat">
+              <div class="stat-label">Language</div>
+              <div class="stat-value" id="stat-language"></div>
+            </div>
+            <div class="stat">
+              <div class="stat-label">Religion</div>
+              <div class="stat-value" id="stat-religion"></div>
+            </div>
+            <div class="stat">
+              <div class="stat-label">Christian</div>
+              <div class="stat-value" id="stat-christian"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="visual-col">
+          <div class="plate map-plate" id="map-plate">
+            <img id="map-img" alt="" style="display:none;">
+            <svg id="map-svg" viewBox="0 0 220 160" style="display:none;"></svg>
+            <span class="corner corner-tr"></span>
+            <span class="corner corner-bl"></span>
+          </div>
+          <div class="plate-caption" id="map-coords"></div>
+        </div>
+        </div>
+
+        <div class="bottom-row">
+          <div class="prayer-line">
+            <span id="prayer-text"></span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Settings modal -->
+  <div id="settings-modal" class="hidden">
+    <div class="modal-card">
+      <div class="modal-title">Settings</div>
+      <div class="modal-body">
+        Update your Joshua Project API key below. Free keys are available at
+        <a href="https://api.joshuaproject.net/" target="_blank" rel="noopener">api.joshuaproject.net</a>.
+        This page checks for today's people group each time it loads.
+      </div>
+      <form class="key-form" id="modal-key-form" style="justify-content:flex-start;">
+        <input type="text" id="modal-key-input" placeholder="Your API key" autocomplete="off" spellcheck="false">
+      </form>
+      <div class="form-msg" id="modal-msg"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="modal-close">Close</button>
+        <button type="button" class="btn" id="modal-save">Save</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+(function(){
+  const els = {
+    loading: document.getElementById('loading'),
+    error: document.getElementById('error'),
+    errorTitle: document.getElementById('error-title'),
+    errorDetail: document.getElementById('error-detail'),
+    content: document.getElementById('content'),
+    keyForm: document.getElementById('key-form'),
+    keyInput: document.getElementById('key-input'),
+    formMsg: document.getElementById('form-msg'),
+    gear: document.getElementById('gear'),
+    modal: document.getElementById('settings-modal'),
+    modalInput: document.getElementById('modal-key-input'),
+    modalSave: document.getElementById('modal-save'),
+    modalClose: document.getElementById('modal-close'),
+    modalMsg: document.getElementById('modal-msg'),
+  };
+
+  function showLoading(){
+    els.loading.classList.remove('hidden');
+    els.error.classList.add('hidden');
+  }
+  function showError(title, detail, showForm){
+    els.loading.classList.add('hidden');
+    els.error.classList.remove('hidden');
+    els.errorTitle.textContent = title;
+    els.errorDetail.innerHTML = detail;
+    els.keyForm.style.display = showForm ? 'flex' : 'none';
+  }
+  function showContent(){
+    els.loading.classList.add('hidden');
+    els.error.classList.add('hidden');
+    els.content.classList.add('visible');
+  }
+
+  const memoryStore = {};
+
+  async function storageGet(key){
+    if(window.storage && typeof window.storage.get === 'function'){
+      try{
+        const r = await window.storage.get(key);
+        return r ? r.value : null;
+      }catch(e){ /* fall through to localStorage */ }
+    }
+    try{
+      const v = window.localStorage.getItem(key);
+      if(v !== null) return v;
+    }catch(e){ /* fall through to memory */ }
+    return (key in memoryStore) ? memoryStore[key] : null;
+  }
+
+  async function storageSet(key, value){
+    if(window.storage && typeof window.storage.set === 'function'){
+      try{ await window.storage.set(key, value); return { ok:true }; }
+      catch(e){ /* fall through to localStorage */ }
+    }
+    try{
+      window.localStorage.setItem(key, value);
+      return { ok:true };
+    }catch(e){ /* fall through to memory */ }
+    memoryStore[key] = value;
+    return { ok:true, message:'saved for this session only — this browser does not allow persistent storage' };
+  }
+
+  async function getStoredKey(){
+    return await storageGet('jp_api_key');
+  }
+  async function setStoredKey(key){
+    return await storageSet('jp_api_key', key);
+  }
+
+  function todayStr(){
+    const d = new Date();
+    return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  }
+
+  async function getCached(dateKey){
+    try{
+      const v = await storageGet('jp_cache:'+dateKey);
+      return v ? JSON.parse(v) : null;
+    }catch(e){ return null; }
+  }
+  async function setCached(dateKey, data){
+    try{ await storageSet('jp_cache:'+dateKey, JSON.stringify(data)); }catch(e){}
+  }
+
+  async function fetchUnreached(apiKey){
+    const url = 'https://api.joshuaproject.net/v1/people_groups/daily_unreached.json?api_key=' + encodeURIComponent(apiKey);
+    const resp = await fetch(url);
+    if(!resp.ok){
+      throw new Error('HTTP ' + resp.status);
+    }
+    const data = await resp.json();
+    if(!Array.isArray(data) || data.length === 0){
+      throw new Error('empty');
+    }
+    return data[0];
+  }
+
+  function fmtNumber(n){
+    if(n === null || n === undefined || n === '') return '—';
+    return Number(n).toLocaleString('en-US');
+  }
+  function fmtPercent(n){
+    if(n === null || n === undefined || n === '') return '0.00%';
+    return Number(n).toFixed(2) + '%';
+  }
+
+  function drawGraticule(lat, lon){
+    const svg = document.getElementById('map-svg');
+    const W = 220, H = 160;
+    svg.innerHTML = '';
+    const ns = 'http://www.w3.org/2000/svg';
+
+    // meridians every 30deg, parallels every 30deg
+    for(let lo=-180; lo<=180; lo+=30){
+      const x = ((lo+180)/360)*W;
+      const line = document.createElementNS(ns,'line');
+      line.setAttribute('x1',x); line.setAttribute('x2',x);
+      line.setAttribute('y1',0); line.setAttribute('y2',H);
+      line.setAttribute('stroke','rgba(201,161,93,0.18)');
+      line.setAttribute('stroke-width','0.6');
+      svg.appendChild(line);
+    }
+    for(let la=-90; la<=90; la+=30){
+      const y = ((90-la)/180)*H;
+      const line = document.createElementNS(ns,'line');
+      line.setAttribute('x1',0); line.setAttribute('x2',W);
+      line.setAttribute('y1',y); line.setAttribute('y2',y);
+      line.setAttribute('stroke','rgba(201,161,93,0.18)');
+      line.setAttribute('stroke-width','0.6');
+      svg.appendChild(line);
+    }
+
+    if(typeof lat === 'number' && typeof lon === 'number' && !isNaN(lat) && !isNaN(lon)){
+      const x = ((lon+180)/360)*W;
+      const y = ((90-lat)/180)*H;
+
+      const glow = document.createElementNS(ns,'circle');
+      glow.setAttribute('cx',x); glow.setAttribute('cy',y); glow.setAttribute('r',9);
+      glow.setAttribute('fill','rgba(228,192,126,0.25)');
+      svg.appendChild(glow);
+
+      const dot = document.createElementNS(ns,'circle');
+      dot.setAttribute('cx',x); dot.setAttribute('cy',y); dot.setAttribute('r',3.2);
+      dot.setAttribute('fill','#E4C07E');
+      dot.setAttribute('stroke','#0E1524');
+      dot.setAttribute('stroke-width','0.8');
+      svg.appendChild(dot);
+    }
+  }
+
+  function render(u){
+    const dateLabel = new Date().toLocaleDateString('en-US', { month:'long', day:'numeric', year:'numeric' });
+    document.getElementById('date-label').textContent = '· ' + dateLabel;
+    document.getElementById('scale-badge-text').textContent = u.JPScaleText || 'Unreached';
+
+    const scaleIcon = document.getElementById('scale-icon');
+    if(u.JPScaleImageURL){
+      scaleIcon.onerror = () => scaleIcon.classList.remove('loaded');
+      scaleIcon.onload = () => scaleIcon.classList.add('loaded');
+      scaleIcon.src = u.JPScaleImageURL;
+    }else{
+      scaleIcon.removeAttribute('src');
+      scaleIcon.classList.remove('loaded');
+    }
+
+    document.getElementById('people-name').textContent = u.PeopNameInCountry || u.PeopNameAcrossCountries || 'Unknown people group';
+    document.getElementById('country-line').textContent = 'of ' + (u.Ctry || '—');
+
+    document.getElementById('stat-population').textContent = fmtNumber(u.Population);
+    document.getElementById('stat-language').textContent = u.PrimaryLanguageName || '—';
+    document.getElementById('stat-religion').textContent = u.PrimaryReligion || '—';
+    document.getElementById('stat-christian').textContent = fmtPercent(u.PercentAdherents);
+
+    document.getElementById('prayer-text').textContent =
+      'Please pray for the ' + (u.PeopNameInCountry || 'people') + ' of ' + (u.Ctry || '—') + '.';
+
+    // Photo plate
+    const photoPlate = document.getElementById('photo-plate');
+    const photoImg = document.getElementById('photo-img');
+    const photoCredit = document.getElementById('photo-credit');
+    if(u.PeopleGroupPhotoURL){
+      photoImg.src = u.PeopleGroupPhotoURL;
+      photoPlate.classList.remove('empty');
+      photoCredit.textContent = u.PhotoCredits ? ('Photo: ' + u.PhotoCredits) : '';
+    }else{
+      photoPlate.classList.add('empty');
+      photoCredit.textContent = '';
+    }
+
+    // Map plate — prefer Joshua Project's real location map, fall back to a locator graticule
+    const mapImg = document.getElementById('map-img');
+    const mapSvg = document.getElementById('map-svg');
+    const mapCoordsEl = document.getElementById('map-coords');
+    const lat = parseFloat(u.Latitude);
+    const lon = parseFloat(u.Longitude);
+    const coordsText = (isNaN(lat)||isNaN(lon)) ? '' :
+      (Math.abs(lat).toFixed(1) + '°' + (lat>=0?'N':'S') + ', ' + Math.abs(lon).toFixed(1) + '°' + (lon>=0?'E':'W'));
+
+    if(u.PeopleGroupMapURL){
+      mapImg.onerror = () => {
+        mapImg.style.display = 'none';
+        mapSvg.style.display = 'block';
+        drawGraticule(lat, lon);
+      };
+      mapImg.onload = () => {
+        mapImg.style.display = 'block';
+        mapSvg.style.display = 'none';
+      };
+      mapImg.src = u.PeopleGroupMapURL;
+
+      const creditTitle = u.MapCredits ? u.MapCredits.replace(/"/g,'&quot;') : '';
+      mapCoordsEl.innerHTML =
+        (coordsText ? `<span class="coords-main">${coordsText}</span>` : '') +
+        `<span class="coords-credit"${creditTitle ? ` title="${creditTitle}"` : ''}>Map: Joshua Project</span>`;
+    }else{
+      mapImg.style.display = 'none';
+      mapSvg.style.display = 'block';
+      drawGraticule(lat, lon);
+      mapCoordsEl.innerHTML = coordsText ? `<span class="coords-main">${coordsText}</span>` : '';
+    }
+
+    showContent();
+  }
+
+  let currentDateKey = null;
+
+  async function load(){
+    showLoading();
+    currentDateKey = todayStr();
+    const apiKey = await getStoredKey();
+    if(!apiKey){
+      showError(
+        "A free Joshua Project API key is needed to display this.",
+        'Request one at <a href="https://api.joshuaproject.net/" target="_blank" rel="noopener">api.joshuaproject.net</a> — it arrives by email in a few minutes. Paste it below once you have it; this page will remember it.',
+        true
+      );
+      return;
+    }
+
+    const dateKey = todayStr();
+    let data = await getCached(dateKey);
+
+    if(!data){
+      try{
+        data = await fetchUnreached(apiKey);
+        await setCached(dateKey, data);
+      }catch(err){
+        showError(
+          "Couldn't load today's people group.",
+          'The API key may be invalid, or the request failed (' + err.message + '). You can update your key with the gear icon in the top right, or try reloading the page.',
+          true
+        );
+        return;
+      }
+    }
+    render(data);
+  }
+
+  // key entry form (error screen)
+  els.keyForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const val = els.keyInput.value.trim();
+    if(!val){ els.formMsg.textContent = 'Please enter a key.'; return; }
+    els.formMsg.textContent = 'Saving…';
+    const result = await setStoredKey(val);
+    if(!result.ok){
+      els.formMsg.textContent = 'Could not save the key (' + result.message + '). Try again.';
+      return;
+    }
+    els.formMsg.textContent = 'Saved — loading…';
+    await load();
+  });
+
+  // gear / settings modal
+  els.gear.addEventListener('click', async () => {
+    els.modal.classList.remove('hidden');
+    els.modalInput.value = (await getStoredKey()) || '';
+    els.modalMsg.textContent = '';
+  });
+  els.modalClose.addEventListener('click', () => { els.modal.classList.add('hidden'); });
+  els.modalSave.addEventListener('click', async () => {
+    const val = els.modalInput.value.trim();
+    if(!val){ els.modalMsg.textContent = 'Please enter a key.'; return; }
+    els.modalMsg.textContent = 'Saving…';
+    const result = await setStoredKey(val);
+    if(!result.ok){
+      els.modalMsg.textContent = 'Could not save the key (' + result.message + '). Try again.';
+      return;
+    }
+    els.modalMsg.textContent = 'Saved — loading…';
+    els.modal.classList.add('hidden');
+    await load();
+  });
+
+  load();
+
+  setInterval(() => {
+    if(todayStr() !== currentDateKey){
+      load();
+    }
+  }, 5 * 60 * 1000);
+})();
+</script>
+
+</body>
+</html>
